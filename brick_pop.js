@@ -14,6 +14,19 @@
         }
     }
 
+    // 普通对象的深拷贝
+    var copyObj = function(obj) {
+        var o = {};
+        for (var key in obj) {
+            if (typeof obj[key] === 'object') {
+                o[key] = copyObj(obj[key]);
+            }
+            o[key] = obj[key];
+        }
+
+        return o;
+    }
+
     /*
         游戏
      */
@@ -65,24 +78,123 @@
         this.bar = bar; // 挡板
         this.ballList = ballList; // 弹球列表
         this.brickList = brickList; // 砖块列表
+        this.play = true; // 游戏场景进行
+        this.cache = {
+            'bar': copyObj(bar),
+            'ballList': copyObj(ballList),
+            'brickList': copyObj(brickList)
+        };
+
+        this._addListener(); // 绑定监听事件
     };
 
     // 继承Stage原型
     GameStage.prototype = Object.create(Stage);
     GameStage.prototype.constructor = GameStage;
 
+    // 绑定控制台操作按钮
+    GameStage.prototype._addListener = function() {
+        this._initBaseControl();
+        this._initGameControl();
+    }
+
+    // 系统按键设置
+    GameStage.prototype._initBaseControl = function() {
+        var _self = this;
+        var keyMap = {
+            'KeyP': function() { // 暂停
+                _self.pause();
+            },
+            'KeyO': function() { // 继续
+                _self.resume();
+            },
+            'KeyR': function() { // 重新开始
+                _self.restart();
+            }
+        }
+        document.addEventListener('keydown', function(e) {
+            var code = e.code;
+            if (keyMap[code]) {
+                keyMap[code]();
+            }
+        });
+    }
+
+    // 游戏控制按键设置
+    GameStage.prototype._initGameControl = function() {
+        var _self = this;
+        var keyDownMap = {
+            'KeyA': function() {
+                _self.bar.setMoveBase(-1);
+            },
+            'KeyD': function() {
+                _self.bar.setMoveBase(1);
+            }
+        }
+
+        var keyUpMap = {
+            'KeyA': function() {
+                _self.bar.setMoveBase(0);
+            },
+            'KeyD': function() {
+                _self.bar.setMoveBase(0);
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            var code = e.code;
+            if (keyDownMap[code]) {
+                keyDownMap[code]();
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            var code = e.code;
+            if (keyUpMap[code]) {
+                keyUpMap[code]();
+            }
+        });
+    }
+
+    // 暂停游戏场景
+    GameStage.prototype.pause = function() {
+        this.play = false;
+    }
+
+    // 继续游戏场景
+    GameStage.prototype.resume = function() {
+        this.play = true;
+    }
+
+    // 重新开始游戏
+    GameStage.prototype.restart = function() {
+        this._loadCache();
+        this.pause();
+    }
+
+    // 重新加载游戏地图
+    GameStage.prototype._loadCache = function() {
+        for (var key in this.cache) {
+            this[key] = this.cache[key];
+        }
+    }
+
     // 更新场景
     GameStage.prototype.update = function() {
-        this.updateBrickList(); // 更新砖块
-        this.updateBallList(); // 更新球
+        if (this.play) {
+            this._updateBrickList();
+            this._updateBallList();
+            this._updateBar();
 
-        this._clearCanvas(); // 清空画布
-        this._drawCanvas();
+            this._clearCanvas();
+            this._drawCanvas();
+        }
 
         var _self = this;
         requestAnimationFrame(this.update.bind(_self));
     }
 
+    // 绘制所有图形
     GameStage.prototype._drawCanvas = function() {
         // 绘制图形
         var _self = this;
@@ -111,7 +223,8 @@
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    GameStage.prototype.updateBallList = function() {
+    // 更新弹球列表
+    GameStage.prototype._updateBallList = function() {
         for (var i = this.ballList.length - 1; i >= 0; i--) {
             var ball = this.ballList[i];
 
@@ -121,11 +234,13 @@
             ball.x += ball.dx;
             ball.y += ball.dy;
 
-            this._brickCollision(ball); // 砖块碰撞检测
-            this._wallCollision(ball); // 边界检测
+            this._brickCollision(ball);
+            this._wallCollision(ball);
+            this._barCollision(ball);
         }
     }
 
+    // 砖块碰撞检测
     GameStage.prototype._brickCollision = function(ball) {
         for (var i = this.brickList.length - 1; i >= 0; i--) {
             var brick = this.brickList[i];
@@ -137,6 +252,7 @@
         }
     }
 
+    // 边界检测
     GameStage.prototype._wallCollision = function(ball) {
         if (ball.x < 0 || ball.x + ball.width > this.canvas.width) {
             ball.dx = -ball.dx;
@@ -156,8 +272,15 @@
             }
         }
     }
+    // 挡板碰撞检测
+    GameStage.prototype._barCollision = function(ball) {
+        if (collision(ball, this.bar)) {
+            ball.bounce(this.bar); // 球反弹
+        }
+    }
 
-    GameStage.prototype.updateBrickList = function() {
+    // 更新砖块列表
+    GameStage.prototype._updateBrickList = function() {
         for (var i = this.brickList.length - 1; i >= 0; i--) {
             var brick = this.brickList[i];
 
@@ -166,6 +289,13 @@
                 this.brickList.splice(i, 1);
                 break;
             }
+        }
+    }
+
+    // 更新挡板位置
+    GameStage.prototype._updateBar = function() {
+        if (this.play) {
+            this.bar.update();
         }
     }
 
@@ -186,10 +316,22 @@
      */
     var Bar = function(width, height, x, y) {
         Rect.call(this, width, height, x, y);
+        this.speed = 500 / 60; // 移动速度
+        this.moveBase = 0; // 移动基准
     }
 
     Bar.prototype = Object.create(Rect);
     Bar.prototype.constructor = Bar;
+
+    // 设置移动基准
+    Bar.prototype.setMoveBase = function(val) {
+        this.moveBase = val;
+    }
+
+    // 更新位置
+    Bar.prototype.update = function() {
+        this.x += this.moveBase * this.speed;
+    }
 
     /*
         砖块
@@ -224,27 +366,27 @@
     Ball.prototype.constructor = Ball;
 
     // 球反弹
-    Ball.prototype.bounce = function(brick) {
+    Ball.prototype.bounce = function(rect) {
         // y轴方向的撞击
-        if (this.oldX < brick.x + brick.width &&
-            this.oldX + this.width > brick.x) {
+        if (this.oldX < rect.x + rect.width &&
+            this.oldX + this.width > rect.x) {
             this.dy = -this.dy;
             // 从上方撞击
-            if (this.oldY + this.height < brick.y) {
-                this.y = brick.y - this.height;
+            if (this.oldY + this.height < rect.y) {
+                this.y = rect.y - this.height;
             } else {
                 // 从下方撞击
-                this.y = brick.y + brick.height;
+                this.y = rect.y + rect.height;
             }
         } else {
             // x轴方向的撞击
             this.dx = -this.dx;
             // 从左侧撞击
-            if (this.oldX + this.width < brick.x) {
-                this.x = brick.x - this.width;
+            if (this.oldX + this.width < rect.x) {
+                this.x = rect.x - this.width;
             } else {
                 // 从右侧撞击
-                this.x = brick.x + brick.width;
+                this.x = rect.x + rect.width;
             }
         }
     }
@@ -262,7 +404,7 @@
         var ball = new Ball(10, 10, 450, 400);
         var ballList = [];
         ballList.push(ball);
-        
+
         var brickList = [];
         for (var i = 5; i >= 0; i--) {
             for (var j = 3; j >= 0; j--) {
