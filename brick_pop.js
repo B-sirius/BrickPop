@@ -5,6 +5,7 @@
         throw new Error(text);
     }
 
+    // 碰撞检测
     var collision = function(rect1, rect2) {
         if (rect1.x < rect2.x + rect2.width &&
             rect1.x + rect1.width > rect2.x &&
@@ -14,18 +15,36 @@
         }
     }
 
-    // 普通对象的深拷贝
-    var copyObj = function(obj) {
-        var o = {};
-        for (var key in obj) {
-            if (typeof obj[key] === 'object') {
-                o[key] = copyObj(obj[key]);
-            }
-            o[key] = obj[key];
+    // 深拷贝
+    var deepClone = function(currobj){
+        if(typeof currobj !== 'object'){
+            return currobj;
         }
-
-        return o;
-    }
+        if(currobj instanceof Array){
+            var newobj = [];
+        }else{
+            var newobj = {}
+        }
+        var currQue = [currobj], newQue = [newobj]; //关键在这里
+        while(currQue.length){
+            var obj1 = currQue.shift(),obj2 = newQue.shift();
+            for(var key in obj1){
+                if(typeof obj1[key] !== 'object'){
+                    obj2[key] = obj1[key];
+                }else{
+                    if(obj1[key] instanceof Array ){
+                        obj2[key] = [];
+                    }else{
+                        obj2[key] = {}
+                    };
+                    // 妙啊
+                    currQue.push(obj1[key]);
+                    newQue.push(obj2[key]);
+                }
+            }
+        }
+        return newobj;
+    };
 
     /*
         游戏
@@ -79,13 +98,10 @@
         this.ballList = ballList; // 弹球列表
         this.brickList = brickList; // 砖块列表
         this.play = true; // 游戏场景进行
-        this.cache = {
-            'bar': copyObj(bar),
-            'ballList': copyObj(ballList),
-            'brickList': copyObj(brickList)
-        };
+        this.cache = {};
 
         this._addListener(); // 绑定监听事件
+        this.saveCache();
     };
 
     // 继承Stage原型
@@ -170,13 +186,29 @@
     GameStage.prototype.restart = function() {
         this._loadCache();
         this.pause();
+        this._clearCanvas();
+        this._drawCanvas();
+    }
+
+    GameStage.prototype.saveCache = function() {
+        this.cache.bar = this.bar.loadCache();
+        this.cache.brickList = this.brickList.map(function(brick) {
+            return brick.loadCache();
+        });
+        this.cache.ballList = this.ballList.map(function(ball) {
+            return ball.loadCache();
+        });
     }
 
     // 重新加载游戏地图
     GameStage.prototype._loadCache = function() {
-        for (var key in this.cache) {
-            this[key] = this.cache[key];
-        }
+        this.bar = this.cache.bar.loadCache();
+        this.brickList = this.cache.brickList.map(function(brick) {
+            return brick.loadCache();
+        });
+        this.ballList = this.cache.ballList.map(function(ball) {
+            return ball.loadCache();
+        });
     }
 
     // 更新场景
@@ -318,10 +350,28 @@
         Rect.call(this, width, height, x, y);
         this.speed = 500 / 60; // 移动速度
         this.moveBase = 0; // 移动基准
+        this.cache = {
+            width: width,
+            height: height,
+            x: x,
+            y: y
+        }
+
+        this._saveCache();
     }
 
     Bar.prototype = Object.create(Rect);
     Bar.prototype.constructor = Bar;
+
+    Bar.prototype._saveCache = function() {
+        for (var key in this.cache) {
+            this.cache[key] = deepClone(this.cache[key]);
+        }
+    }
+
+    Bar.prototype.loadCache = function() {
+        return new Bar(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    }
 
     // 设置移动基准
     Bar.prototype.setMoveBase = function(val) {
@@ -339,10 +389,28 @@
     var Brick = function(width, height, x, y) {
         Rect.call(this, width, height, x, y);
         this.hp = 1;
+        this.cache = {
+            width: width,
+            height: height,
+            x: x,
+            y: y
+        }
+
+        this._saveCache();
     }
 
     Brick.prototype = Object.create(Rect);
     Brick.prototype.constructor = Brick;
+
+    Brick.prototype._saveCache = function() {
+        for (var key in this.cache) {
+            this.cache[key] = deepClone(this.cache[key]);
+        }
+    }
+
+    Brick.prototype.loadCache = function() {
+        return new Brick(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    }
 
     // 砖块被撞到
     Brick.prototype.impact = function() {
@@ -360,10 +428,34 @@
         this.dy = this.speed * Math.sin(this.angle); // y轴分速度
         this.oldX = null; // 上一帧的x
         this.oldY = null; // 上一帧的y
+
+        this.cache = {
+            width: width,
+            height: height,
+            x: x,
+            y: y
+        }
+
+        this._saveCache();
     }
 
     Ball.prototype = Object.create(Rect);
     Ball.prototype.constructor = Ball;
+
+    Ball.prototype._saveCache = function() {
+        for (var key in this.cache) {
+            this.cache[key] = deepClone(this.cache[key]);
+        }
+    }
+
+    Ball.prototype.loadCache = function() {
+        return new Ball(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    }
+
+    // 砖块被撞到
+    Ball.prototype.impact = function() {
+        --this.hp;
+    }
 
     // 球反弹
     Ball.prototype.bounce = function(rect) {
