@@ -190,17 +190,21 @@
         this._drawCanvas();
     }
 
+    // 生成地图缓存
     GameStage.prototype.saveCache = function() {
+        // 缓存挡板
         this.cache.bar = this.bar.loadCache();
+        // 缓存砖块
         this.cache.brickList = this.brickList.map(function(brick) {
             return brick.loadCache();
         });
+        // 缓存弹球
         this.cache.ballList = this.ballList.map(function(ball) {
             return ball.loadCache();
         });
     }
 
-    // 重新加载游戏地图
+    // 从缓存加载游戏地图
     GameStage.prototype._loadCache = function() {
         this.bar = this.cache.bar.loadCache();
         this.brickList = this.cache.brickList.map(function(brick) {
@@ -334,27 +338,36 @@
     /*
         方块
      */
-    var Rect = function(width, height, x, y) {
+    var Rect = function(width, height, x, y, config) {
+        config ? config : config = {};
+
         this.width = width;
         this.height = height;
         this.x = x;
         this.y = y;
-        this.color = '#000'; // 颜色
-        this.fill = true; // 绘制出的图形是否填充颜色
+        this.color = config['color'] || '#000'; // 颜色
+        this.fill = config['fill'] || true; // 绘制出的图形是否填充颜色
     }
 
     /*
         挡板
      */
-    var Bar = function(width, height, x, y) {
-        Rect.call(this, width, height, x, y);
-        this.speed = 500 / 60; // 移动速度
+    var Bar = function(width, height, x, y, rectConfig, barConfig) {
+        Rect.call(this, width, height, x, y, rectConfig);
+
+        barConfig ? barConfig : barConfig = {};
+
+        this.speed = barConfig['speed'] || 500 / 60; // 移动速度
         this.moveBase = 0; // 移动基准
         this.cache = {
-            width: width,
-            height: height,
-            x: x,
-            y: y
+            width: this.width,
+            height: this.height,
+            x: this.x,
+            y: this.y,
+            color: this.color,
+            fill: this.fill,
+            speed: this.speed,
+            moveBase: this.moveBase
         }
 
         this._saveCache();
@@ -386,14 +399,24 @@
     /*
         砖块
      */
-    var Brick = function(width, height, x, y) {
-        Rect.call(this, width, height, x, y);
-        this.hp = 1;
+    var Brick = function(width, height, x, y, rectConfig, brickConfig) {
+        Rect.call(this, width, height, x, y, rectConfig);
+
+        brickConfig ? brickConfig : brickConfig = {};
+
+        this.hp = brickConfig['hp'] || 1;
         this.cache = {
-            width: width,
-            height: height,
-            x: x,
-            y: y
+            width: this.width,
+            height: this.height,
+            x: this.x,
+            y: this.y,
+            rectConfig: {
+                color: this.color,
+                fill: this.fill
+            },
+            brickConfig: {
+                hp: this.hp
+            }
         }
 
         this._saveCache();
@@ -420,10 +443,13 @@
     /*
         弹球
      */
-    var Ball = function(width, height, x, y) {
-        Rect.call(this, width, height, x, y);
-        this.speed = 500 / 60; // 速度
-        this.angle = Math.PI / 4; // 角度
+    var Ball = function(width, height, x, y, rectConfig, ballConfig) {
+        Rect.call(this, width, height, x, y, rectConfig);
+
+        ballConfig ? ballConfig : ballConfig = {};
+
+        this.speed = ballConfig['speed'] || 500 / 60; // 速度
+        this.angle = ballConfig['angle'] || Math.PI / 4; // 角度
         this.dx = this.speed * Math.cos(this.angle); // x轴分速度
         this.dy = this.speed * Math.sin(this.angle); // y轴分速度
         this.oldX = null; // 上一帧的x
@@ -433,7 +459,15 @@
             width: width,
             height: height,
             x: x,
-            y: y
+            y: y,
+            rectConfig: {
+                fill: this.fill,
+                color: this.color,
+            },
+            ballConfig: {
+                speed: this.speed,
+                angle: this.angle
+            }
         }
 
         this._saveCache();
