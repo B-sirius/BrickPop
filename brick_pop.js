@@ -16,25 +16,27 @@
     }
 
     // 深拷贝
-    var deepClone = function(currobj){
-        if(typeof currobj !== 'object'){
+    var deepClone = function(currobj) {
+        if (typeof currobj !== 'object') {
             return currobj;
         }
-        if(currobj instanceof Array){
+        if (currobj instanceof Array) {
             var newobj = [];
-        }else{
+        } else {
             var newobj = {}
         }
-        var currQue = [currobj], newQue = [newobj]; //关键在这里
-        while(currQue.length){
-            var obj1 = currQue.shift(),obj2 = newQue.shift();
-            for(var key in obj1){
-                if(typeof obj1[key] !== 'object'){
+        var currQue = [currobj],
+            newQue = [newobj]; //关键在这里
+        while (currQue.length) {
+            var obj1 = currQue.shift(),
+                obj2 = newQue.shift();
+            for (var key in obj1) {
+                if (typeof obj1[key] !== 'object') {
                     obj2[key] = obj1[key];
-                }else{
-                    if(obj1[key] instanceof Array ){
+                } else {
+                    if (obj1[key] instanceof Array) {
                         obj2[key] = [];
-                    }else{
+                    } else {
                         obj2[key] = {}
                     };
                     // 妙啊
@@ -92,11 +94,11 @@
     /*
         游戏主体场景
      */
-    var GameStage = function(canvas, ctx, bar, ballList, brickList) {
+    var GameStage = function(canvas, ctx) {
         Stage.call(this, canvas, ctx); // 继承父类属性
-        this.bar = bar; // 挡板
-        this.ballList = ballList; // 弹球列表
-        this.brickList = brickList; // 砖块列表
+        this.bar = null; // 挡板
+        this.ballList = null; // 弹球列表
+        this.brickList = null; // 砖块列表
         this.play = true; // 游戏场景进行
         this.cache = {};
 
@@ -112,6 +114,21 @@
     GameStage.prototype._addListener = function() {
         this._initBaseControl();
         this._initGameControl();
+    }
+
+    // 加载砖块列表
+    GameStage.prototype.loadBrickList = function(brickList) {
+        this.brickList = brickList;
+    }
+
+    // 加载挡板
+    GameStage.prototype.loadBar = function(bar) {
+        this.bar = bar;
+    }
+
+    // 加载弹球列表
+    GameStage.prototype.loadBallList = function(ballList) {
+        this.ballList = ballList;
     }
 
     // 系统按键设置
@@ -190,33 +207,37 @@
         this._drawCanvas();
     }
 
-    // 生成地图缓存
-    GameStage.prototype.saveCache = function() {
-        // 缓存挡板
-        this.cache.bar = this.bar.loadCache();
-        // 缓存砖块
-        this.cache.brickList = this.brickList.map(function(brick) {
-            return brick.loadCache();
-        });
-        // 缓存弹球
-        this.cache.ballList = this.ballList.map(function(ball) {
-            return ball.loadCache();
-        });
-    }
+    // // 生成地图缓存
+    // GameStage.prototype.saveCache = function() {
+    //     // 缓存挡板
+    //     this.cache.bar = this.bar.loadCache();
+    //     // 缓存砖块
+    //     this.cache.brickList = this.brickList.map(function(brick) {
+    //         return brick.loadCache();
+    //     });
+    //     // 缓存弹球
+    //     this.cache.ballList = this.ballList.map(function(ball) {
+    //         return ball.loadCache();
+    //     });
+    // }
 
-    // 从缓存加载游戏地图
-    GameStage.prototype._loadCache = function() {
-        this.bar = this.cache.bar.loadCache();
-        this.brickList = this.cache.brickList.map(function(brick) {
-            return brick.loadCache();
-        });
-        this.ballList = this.cache.ballList.map(function(ball) {
-            return ball.loadCache();
-        });
-    }
+    // // 从缓存加载游戏地图
+    // GameStage.prototype._loadCache = function() {
+    //     this.bar = this.cache.bar.loadCache();
+    //     this.brickList = this.cache.brickList.map(function(brick) {
+    //         return brick.loadCache();
+    //     });
+    //     this.ballList = this.cache.ballList.map(function(ball) {
+    //         return ball.loadCache();
+    //     });
+    // }
 
     // 更新场景
     GameStage.prototype.update = function() {
+        if (!(this.ballList && this.brickList && this.bar)) {
+            error('资源未加载完成');
+            return;
+        }
         if (this.play) {
             this._updateBrickList();
             this._updateBallList();
@@ -518,6 +539,12 @@
     }
 
     /*
+        通过map数组生成砖块地图
+     */
+    var brickListGenerator = function(gameStage, map) {
+
+    }
+    /*
         demo版游戏
      */
     var gameDemo = (function() {
@@ -525,21 +552,23 @@
         var ctx = canvas.getContext('2d');
 
         var gameDemo = new Game();
+        var gameStage = new GameStage(canvas, ctx);
 
         var bar = new Bar(100, 20, 450, 500);
+        gameStage.loadBar(bar);
+
         var ball = new Ball(10, 10, 450, 400);
-        var ballList = [];
-        ballList.push(ball);
+        var ballList = [ball];
+        gameStage.loadBallList(ballList);
+        // var brickList = [];
+        // for (var i = 5; i >= 0; i--) {
+        //     for (var j = 3; j >= 0; j--) {
+        //         var brick = new Brick(100, 40, i * 100, j * 80 + 50);
+        //         brickList.push(brick);
+        //     }
+        // }
 
-        var brickList = [];
-        for (var i = 5; i >= 0; i--) {
-            for (var j = 3; j >= 0; j--) {
-                var brick = new Brick(100, 40, i * 100, j * 80 + 50);
-                brickList.push(brick);
-            }
-        }
 
-        var gameStage = new GameStage(canvas, ctx, bar, ballList, brickList);
         var stageMap = {
             gameStage: gameStage
         };
