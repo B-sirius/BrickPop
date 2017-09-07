@@ -205,7 +205,10 @@
         this.bar = null; // 挡板
         this.ballList = null; // 弹球列表
         this.brickList = null; // 砖块列表
-        this.play = true; // 游戏场景进行
+        this.particleList = []; // 粒子列表
+        this.particleCache = []; // 粒子缓存池
+        // 游戏场景进行
+        this.play = true;
         // 场景激活标志
         this.active = false;
         // 按键绑定的引用
@@ -227,6 +230,11 @@
         this._loadBrickList();
         this._loadBallList();
         this._loadBar();
+        this.particleList = [];
+        this.particleCache = [];
+
+        this._clearCanvas();
+        this._drawCanvas();
     }
 
     // 停止场景工作
@@ -384,6 +392,7 @@
         this._loadBar();
         this._loadBallList();
         this._loadBrickList();
+        this.particleList = [];
 
         this.pause();
         this._clearCanvas();
@@ -430,9 +439,10 @@
 
         // 检查是否处于播放状态
         if (this.play) {
+            this._updateBar();
             this._updateBrickList();
             this._updateBallList();
-            this._updateBar();
+            this._updateParticleList();
 
             this._clearCanvas();
             this._drawCanvas();
@@ -453,6 +463,9 @@
         this.ballList.forEach(function(item) {
             _self._drawRect(item);
         });
+        this.particleList.forEach(function(item) {
+            _self._drawRect(item);
+        })
     }
 
     // 绘制方块儿
@@ -492,6 +505,7 @@
 
             // 若砖块hp为0，移除
             if (brick.hp <= 0) {
+                this._blast(brick.x + brick.width / 2, brick.y + brick.height / 2, 20); // boooom
                 this.brickList.splice(i, 1);
                 break;
             }
@@ -503,6 +517,38 @@
         if (this.play) {
             this.bar.update();
             this._wallCollision(this.bar);
+        }
+    }
+
+    // 更新粒子
+    GameStage.prototype._updateParticleList = function() {
+        for (var i = this.particleList.length - 1; i >= 0; i--) {
+            var particle = this.particleList[i];
+
+            particle.x += particle.dx;
+            particle.y += particle.dy;
+
+            // 亮度衰减
+            particle.fade();
+            particle.updateColor();
+
+            if (particle.light <= 0) {
+                this.particleList.splice(i, 1);
+                this.particleCache.push(particle);
+            }
+        }
+    }
+
+    // 爆炸粒子飞溅
+    GameStage.prototype._blast = function(x, y, num) {
+        for (var i = num - 1; i >= 0; i--) {
+            var particle;
+            if (this.particleCache.length) { // 首先从粒子缓存池中取对象
+                particle = this.particleCache.pop().reset(x, y);
+            } else {
+                particle = new Particle(5, 5, x, y);
+            }
+            this.particleList.push(particle);
         }
     }
 
@@ -730,6 +776,63 @@
     }
 
     /*
+        粒子
+     */
+    var Particle = function(width, height, x, y, particleConfig) {
+        particleConfig ? particleConfig : particleConfig = {};
+
+        if (particleConfig['baseSpeed'] && particleConfig['dSpeed']) {
+            this.speed = particleConfig['baseSpeed'] + Math.random * particleConfig['dSpeed'];
+        } else {
+            this.speed = 300 / 60 + 400 / 60 * Math.random(); // 速度
+        }
+        this.angle = Math.random() * 2 * Math.PI; // 角度
+        this.dx = this.speed * Math.cos(this.angle); // x轴分速度
+        this.dy = this.speed * Math.sin(this.angle); // y轴分速度
+        this.light = 60;
+
+        var color = 'rgba(' + this.rgb() + ', ' + this.light / 60 + ')';
+
+        Rect.call(this, width, height, x, y, {
+            color: color
+        });
+    }
+
+    Particle.prototype = Object.create(Rect.prototype);
+    Particle.prototype.constructor = Particle;
+
+    Particle.prototype.rgb = (function() {
+        var rgbList = [
+            '255, 246, 82',
+            '255, 164, 36',
+            '250, 60, 2'
+        ]
+        return function() {
+            var index = Math.floor(Math.random() * rgbList.length);
+            return rgbList[index];
+        }
+    })()
+
+    // 重置粒子
+    Particle.prototype.reset = function(x, y) {
+        this.x = x;
+        this.y = y;
+        this.light = 60;
+
+        return this;
+    }
+
+    // 光亮减弱
+    Particle.prototype.fade = function() {
+        this.light--;
+    }
+
+    // 修改光亮
+    Particle.prototype.updateColor = function() {
+        this.color = 'rgba(' + this.rgb() + ',' + this.light / 60 + ')';
+    }
+
+    /*
         通过map数组生成砖块对象数组
      */
     var brickListGenerator = function(map) {
@@ -757,14 +860,13 @@
 
         // 设置游戏场景数据
         var barData = [100, 20, 450, 500, {
-            'color': '#00C9FA'
+            'color': '#8D00FF'
         }];
         gameStage.setBarData(barData);
 
         var ballData = [
             [10, 10, 450, 400, {
-                'fill': false,
-                'color': '#00C9FA'
+                'color': '#8D00FF'
             }]
         ];
         gameStage.setBallData(ballData);
@@ -772,8 +874,8 @@
         var brickData = [];
         for (var i = 5; i >= 0; i--) {
             for (var j = 3; j >= 0; j--) {
-                brickData.push([100, 40, i * 100 + 30, j * 80 + 50, {
-                    'color': '#8D00FF'
+                brickData.push([40, 20, i * 100 + 30, j * 80 + 50, {
+                    'color': '#7F7F7F'
                 }]);
             }
         }
