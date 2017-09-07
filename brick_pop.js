@@ -62,6 +62,7 @@
     Game.prototype.addStage = function(stageMap) {
         for (var key in stageMap) {
             this.stageMap[key] = stageMap[key];
+            this.stageMap[key].game = this;
         }
     }
 
@@ -69,6 +70,10 @@
     Game.prototype.setStage = function(stageName) {
         if (!this.stageMap[stageName]) {
             error('不存在的游戏场景！');
+        }
+        // 如果已有场景在运行
+        if (this.currStage) {
+            this.currStage.stop();
         }
         this.currStage = this.stageMap[stageName];
     }
@@ -78,6 +83,7 @@
         if (!this.currStage) {
             error('未指定游戏场景！');
         }
+        this.currStage.init();
         this.currStage.update();
     }
 
@@ -93,6 +99,104 @@
         error('update方法必须被复写！');
     }
 
+    Stage.prototype.init = function() {
+        error('init方法必须被重写!');
+    };
+
+    Stage.prototype.stop = function() {
+        error('stop方法必须被重写!');
+    }
+
+    // 清空画布
+    Stage.prototype._clearCanvas = function() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    var TitleStage = function(canvas, ctx) {
+        Stage.call(this, canvas, ctx); // 继承父类属性
+        // 场景激活标志
+        this.active = false;
+        // 按键绑定的引用
+        this.baseControl = null;
+    }
+
+    // 继承Stage原型
+    TitleStage.prototype = Object.create(Stage.prototype);
+    TitleStage.prototype.constructor = TitleStage;
+
+    // 初始化标题界面
+    TitleStage.prototype.init = function() {
+        this.active = true;
+        this._addListener();
+    }
+
+    // 停止标题界面
+    TitleStage.prototype.stop = function() {
+        this.active = false;
+        this._removeListener();
+    }
+
+    TitleStage.prototype.update = function() {
+        // 检查当前场景是否激活
+        if (!this.active) {
+            return;
+        }
+
+        this._clearCanvas();
+        this._drawCanvas();
+
+        var _self = this;
+        requestAnimationFrame(this.update.bind(_self));
+    }
+
+    TitleStage.prototype._drawCanvas = function() {
+        this._drawTitle();
+    }
+
+    TitleStage.prototype._drawTitle = function() {
+        var ctx = this.ctx;
+
+        ctx.font = '50px serif';
+
+        var fontWidth = ctx.measureText('BrickPop').width;
+        var fontX = this.canvas.width / 2 - fontWidth / 2;
+
+        ctx.fillStyle = '#000';
+        ctx.fillText('BrickPop', fontX, 200);
+    }
+
+    TitleStage.prototype._addListener = function() {
+        this._enableBaseControl();
+    }
+
+    TitleStage.prototype._removeListener = function() {
+        this._disableBaseControl();
+    }
+
+    TitleStage.prototype._enableBaseControl = function() {
+        var _self = this;
+        var keyMap = {
+            // 开始游戏
+            'Enter': function() {
+                _self.game.setStage('gameStage');
+                _self.game.start();
+            }
+        }
+
+        this.baseControl = function(e) {
+            var code = e.code;
+            if (keyMap[code]) {
+                keyMap[code]();
+            }
+        }
+
+        document.addEventListener('keydown', _self.baseControl);
+    }
+
+    TitleStage.prototype._disableBaseControl = function() {
+        document.removeEventListener('keydown', this.baseControl);
+    }
+
     /*
         游戏主体场景
      */
@@ -102,37 +206,139 @@
         this.ballList = null; // 弹球列表
         this.brickList = null; // 砖块列表
         this.play = true; // 游戏场景进行
-        this.cache = {};
-
-        this._addListener(); // 绑定监听事件
+        // 场景激活标志
+        this.active = false;
+        // 按键绑定的引用
+        this.baseControl = null;
+        this.gameKeyDown = null;
+        this.gameKeyUp = null;
     };
 
     // 继承Stage原型
-    GameStage.prototype = Object.create(Stage);
+    GameStage.prototype = Object.create(Stage.prototype);
     GameStage.prototype.constructor = GameStage;
+
+    // 初始化游戏场景
+    GameStage.prototype.init = function() {
+        this.active = true;
+
+        this._addListener();
+
+        this._loadBrickList();
+        this._loadBallList();
+        this._loadBar();
+    }
+
+    // 停止场景工作
+    GameStage.prototype.stop = function() {
+        this.active = false;
+
+        this._removeListener();
+    }
 
     // 绑定控制台操作按钮
     GameStage.prototype._addListener = function() {
-        this._initBaseControl();
-        this._initGameControl();
+        this._enableBaseControl();
+        this._enableGameControl();
+    }
+
+    GameStage.prototype._removeListener = function() {
+        this._disableBaseControl();
+        this._disableGameControl();
+    }
+
+    // 激活系统按键
+    GameStage.prototype._enableBaseControl = function() {
+        var _self = this;
+        var keyMap = {
+            'KeyP': function() { // 暂停
+                _self.pause();
+            },
+            'KeyO': function() { // 继续
+                _self.resume();
+            },
+            'KeyR': function() { // 重新开始
+                _self.restart();
+            },
+            'Escape': function() { // 回到标题界面
+                _self.game.setStage('titleStage');
+                _self.game.start();
+            }
+        }
+
+        this.baseControl = function(e) {
+            var code = e.code;
+            if (keyMap[code]) {
+                keyMap[code]();
+            }
+        }
+
+        document.addEventListener('keydown', _self.baseControl);
+    }
+
+    // 激活游戏控制按键
+    GameStage.prototype._enableGameControl = function() {
+        var _self = this;
+        var keyDownMap = {
+            'KeyA': function() {
+                _self.bar.setMoveBase(-1);
+            },
+            'KeyD': function() {
+                _self.bar.setMoveBase(1);
+            }
+        }
+
+        var keyUpMap = {
+            'KeyA': function() {
+                _self.bar.setMoveBase(0);
+            },
+            'KeyD': function() {
+                _self.bar.setMoveBase(0);
+            }
+        }
+
+        this.gameKeyDown = function(e) {
+            var code = e.code;
+            if (keyDownMap[code]) {
+                keyDownMap[code]();
+            }
+        }
+
+        this.gameKeyUp = function(e) {
+            var code = e.code;
+            if (keyUpMap[code]) {
+                keyUpMap[code]();
+            }
+        }
+
+        document.addEventListener('keydown', _self.gameKeyDown);
+        document.addEventListener('keyup', _self.gameKeyUp);
+    }
+
+    // 禁用系统按键
+    GameStage.prototype._disableBaseControl = function() {
+        document.removeEventListener('keydown', this.baseControl);
+    }
+
+    // 禁用游戏按键
+    GameStage.prototype._disableGameControl = function() {
+        document.removeEventListener('keydown', this.gameKeyDown);
+        document.removeEventListener('keyup', this.gameKeyUp);
     }
 
     // 设置砖块地图数据
     GameStage.prototype.setBrickData = function(brickData) {
         this.brickData = brickData;
-        this._loadBrickList();
     }
 
     // 设置挡板数据
     GameStage.prototype.setBarData = function(barData) {
         this.barData = barData;
-        this._loadBar();
     }
 
     // 设置弹球数据
     GameStage.prototype.setBallData = function(ballData) {
         this.ballData = ballData;
-        this._loadBallList();
     }
 
     // 从地图砖块数据加载砖块列表
@@ -161,64 +367,6 @@
         });
 
         this.ballList = ballList;
-    }
-
-    // 系统按键设置
-    GameStage.prototype._initBaseControl = function() {
-        var _self = this;
-        var keyMap = {
-            'KeyP': function() { // 暂停
-                _self.pause();
-            },
-            'KeyO': function() { // 继续
-                _self.resume();
-            },
-            'KeyR': function() { // 重新开始
-                _self.restart();
-            }
-        }
-        document.addEventListener('keydown', function(e) {
-            var code = e.code;
-            if (keyMap[code]) {
-                keyMap[code]();
-            }
-        });
-    }
-
-    // 游戏控制按键设置
-    GameStage.prototype._initGameControl = function() {
-        var _self = this;
-        var keyDownMap = {
-            'KeyA': function() {
-                _self.bar.setMoveBase(-1);
-            },
-            'KeyD': function() {
-                _self.bar.setMoveBase(1);
-            }
-        }
-
-        var keyUpMap = {
-            'KeyA': function() {
-                _self.bar.setMoveBase(0);
-            },
-            'KeyD': function() {
-                _self.bar.setMoveBase(0);
-            }
-        }
-
-        document.addEventListener('keydown', function(e) {
-            var code = e.code;
-            if (keyDownMap[code]) {
-                keyDownMap[code]();
-            }
-        });
-
-        document.addEventListener('keyup', function(e) {
-            var code = e.code;
-            if (keyUpMap[code]) {
-                keyUpMap[code]();
-            }
-        });
     }
 
     // 暂停游戏场景
@@ -269,10 +417,18 @@
 
     // 更新场景
     GameStage.prototype.update = function() {
+        // 检查当前场景是否激活
+        if (!this.active) {
+            return;
+        }
+
+        // 检查资源是否加载完成
         if (!(this.ballList && this.brickList && this.bar)) {
             error('资源未加载完成');
             return;
         }
+
+        // 检查是否处于播放状态
         if (this.play) {
             this._updateBrickList();
             this._updateBallList();
@@ -301,18 +457,15 @@
 
     // 绘制方块儿
     GameStage.prototype._drawRect = function(rect) {
+        var ctx = this.ctx;
         // 是否填充图形
         if (rect.fill === true) {
-            this.ctx.fillStyle = rect.color;
-            this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+            ctx.fillStyle = rect.color;
+            ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+            return;
         }
-        this.ctx.strokeStyle = rect.color;
-        this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    }
-
-    // 清空画布
-    GameStage.prototype._clearCanvas = function() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.strokeStyle = rect.color;
+        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
     }
 
     // 更新弹球列表
@@ -405,7 +558,7 @@
         this.x = x;
         this.y = y;
         this.color = config['color'] || '#000'; // 颜色
-        this.fill = config['fill'] || true; // 绘制出的图形是否填充颜色
+        this.fill = config['fill'] === false ? false : true; // 绘制出的图形是否填充颜色
     }
 
     /*
@@ -418,32 +571,32 @@
 
         this.speed = barConfig['speed'] || 500 / 60; // 移动速度
         this.moveBase = 0; // 移动基准
-        this.cache = {
-            width: this.width,
-            height: this.height,
-            x: this.x,
-            y: this.y,
-            color: this.color,
-            fill: this.fill,
-            speed: this.speed,
-            moveBase: this.moveBase
-        }
+        // this.cache = {
+        //     width: this.width,
+        //     height: this.height,
+        //     x: this.x,
+        //     y: this.y,
+        //     color: this.color,
+        //     fill: this.fill,
+        //     speed: this.speed,
+        //     moveBase: this.moveBase
+        // }
 
-        this._saveCache();
+        // this._saveCache();
     }
 
-    Bar.prototype = Object.create(Rect);
+    Bar.prototype = Object.create(Rect.prototype);
     Bar.prototype.constructor = Bar;
 
-    Bar.prototype._saveCache = function() {
-        for (var key in this.cache) {
-            this.cache[key] = deepClone(this.cache[key]);
-        }
-    }
+    // Bar.prototype._saveCache = function() {
+    //     for (var key in this.cache) {
+    //         this.cache[key] = deepClone(this.cache[key]);
+    //     }
+    // }
 
-    Bar.prototype.loadCache = function() {
-        return new Bar(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
-    }
+    // Bar.prototype.loadCache = function() {
+    //     return new Bar(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    // }
 
     // 设置移动基准
     Bar.prototype.setMoveBase = function(val) {
@@ -464,35 +617,35 @@
         brickConfig ? brickConfig : brickConfig = {};
 
         this.hp = brickConfig['hp'] || 1;
-        this.cache = {
-            width: this.width,
-            height: this.height,
-            x: this.x,
-            y: this.y,
-            rectConfig: {
-                color: this.color,
-                fill: this.fill
-            },
-            brickConfig: {
-                hp: this.hp
-            }
-        }
+        // this.cache = {
+        //     width: this.width,
+        //     height: this.height,
+        //     x: this.x,
+        //     y: this.y,
+        //     rectConfig: {
+        //         color: this.color,
+        //         fill: this.fill
+        //     },
+        //     brickConfig: {
+        //         hp: this.hp
+        //     }
+        // }
 
-        this._saveCache();
+        // this._saveCache();
     }
 
-    Brick.prototype = Object.create(Rect);
+    Brick.prototype = Object.create(Rect.prototype);
     Brick.prototype.constructor = Brick;
 
-    Brick.prototype._saveCache = function() {
-        for (var key in this.cache) {
-            this.cache[key] = deepClone(this.cache[key]);
-        }
-    }
+    // Brick.prototype._saveCache = function() {
+    //     for (var key in this.cache) {
+    //         this.cache[key] = deepClone(this.cache[key]);
+    //     }
+    // }
 
-    Brick.prototype.loadCache = function() {
-        return new Brick(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
-    }
+    // Brick.prototype.loadCache = function() {
+    //     return new Brick(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    // }
 
     // 砖块被撞到
     Brick.prototype.impact = function() {
@@ -514,36 +667,36 @@
         this.oldX = null; // 上一帧的x
         this.oldY = null; // 上一帧的y
 
-        this.cache = {
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            rectConfig: {
-                fill: this.fill,
-                color: this.color,
-            },
-            ballConfig: {
-                speed: this.speed,
-                angle: this.angle
-            }
-        }
+        // this.cache = {
+        //     width: width,
+        //     height: height,
+        //     x: x,
+        //     y: y,
+        //     rectConfig: {
+        //         fill: rectConfig.fill || true,
+        //         color: rectConfig.color || '#000',
+        //     },
+        //     ballConfig: {
+        //         speed: ballConfig.speed,
+        //         angle: ballConfig.angle
+        //     }
+        // }
 
-        this._saveCache();
+        // this._saveCache();
     }
 
-    Ball.prototype = Object.create(Rect);
+    Ball.prototype = Object.create(Rect.prototype);
     Ball.prototype.constructor = Ball;
 
-    Ball.prototype._saveCache = function() {
-        for (var key in this.cache) {
-            this.cache[key] = deepClone(this.cache[key]);
-        }
-    }
+    // Ball.prototype._saveCache = function() {
+    //     for (var key in this.cache) {
+    //         this.cache[key] = deepClone(this.cache[key]);
+    //     }
+    // }
 
-    Ball.prototype.loadCache = function() {
-        return new Ball(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
-    }
+    // Ball.prototype.loadCache = function() {
+    //     return new Ball(this.cache.width, this.cache.height, this.cache.x, this.cache.y);
+    // }
 
     // 砖块被撞到
     Ball.prototype.impact = function() {
@@ -596,29 +749,40 @@
 
         var gameDemo = new Game();
 
+        // 创建标题场景
+        var titleStage = new TitleStage(canvas, ctx);
+
         // 创建游戏场景
         var gameStage = new GameStage(canvas, ctx);
 
         // 设置游戏场景数据
-        var barData = [100, 20, 450, 500];
+        var barData = [100, 20, 450, 500, {
+            'color': '#00C9FA'
+        }];
         gameStage.setBarData(barData);
 
         var ballData = [
-            [10, 10, 450, 400]
+            [10, 10, 450, 400, {
+                'fill': false,
+                'color': '#00C9FA'
+            }]
         ];
         gameStage.setBallData(ballData);
 
         var brickData = [];
         for (var i = 5; i >= 0; i--) {
             for (var j = 3; j >= 0; j--) {
-                brickData.push([100, 40, i * 100 + 30, j * 80 + 50]);
+                brickData.push([100, 40, i * 100 + 30, j * 80 + 50, {
+                    'color': '#8D00FF'
+                }]);
             }
         }
         gameStage.setBrickData(brickData);
 
         // 将场景添加进游戏
         var stageMap = {
-            gameStage: gameStage
+            gameStage: gameStage,
+            titleStage: titleStage
         };
 
         gameDemo.addStage(stageMap);
@@ -626,4 +790,3 @@
         gameDemo.start();
     })();
 })();
-
