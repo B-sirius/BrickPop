@@ -1,5 +1,8 @@
 'use strict';
 (function() {
+    /*
+        公共方法
+     */
     var _bind = Function.prototype.bind;
 
     // 抛出错误方法
@@ -48,7 +51,25 @@
             }
         }
         return newobj;
-    };
+    }
+
+    var throttle = function(fn) {
+        var timerId = null;
+        var interval = 100;
+
+        return function() {
+            if (timerId !== null) {
+                return;
+            }
+
+            fn.apply(this, arguments);
+
+            timerId = setTimeout(function() {
+                clearTimeout(timerId);
+                timerId = null;
+            }, interval);
+        }
+    }
 
     /*
         游戏
@@ -179,6 +200,10 @@
             // 开始游戏
             'Enter': function() {
                 _self.game.setStage('gameStage');
+                _self.game.start();
+            },
+            'KeyE': function() {
+                _self.game.setStage('editorStage');
                 _self.game.start();
             }
         }
@@ -594,6 +619,120 @@
     }
 
     /*
+        点阵式地图编辑器
+     */
+    var EditorStage = function(canvas, ctx) {
+        Stage.call(this, canvas, ctx);
+        this.selectedBrickList = [];
+    }
+
+    EditorStage.prototype = Object.create(Stage.prototype);
+    EditorStage.prototype.constructor = EditorStage;
+
+    EditorStage.prototype.init = function() {
+        this.active = true;
+
+        this._addEventListener();
+
+        this._clearCanvas();
+        this._drawCanvas();
+    }
+
+    EditorStage.prototype.stop = function() {
+        this.active = false;
+        this._removeListener();
+    }
+
+    EditorStage.prototype._addEventListener = function() {
+        this._enableEditorControl();
+        this._enableBaseControl();
+    }
+
+    EditorStage.prototype._removeListener = function() {
+        this._disableEditorControl();
+        this._disableBaseControl();
+    }
+
+    EditorStage.prototype._enableEditorControl = function() {
+        var _self = this;
+        this.editorMouseDown = function(e) {
+            console.log(e.offsetX, e.offsetY);
+
+            _self.canvas.addEventListener('mousemove', throttleDrag);
+        }
+        this.editorMouseUp = function(e) {
+            _self.canvas.removeEventListener('mousemove', throttleDrag);
+        }
+
+        var drag = function(e) {
+            console.log(e.offsetX, e.offsetY);
+        }
+        var throttleDrag = throttle(drag.bind(this));
+
+        this.canvas.addEventListener('mousedown', this.editorMouseDown);
+        document.addEventListener('mouseup', this.editorMouseUp);
+    }
+
+    EditorStage.prototype._enableBaseControl = function() {
+        var _self = this;
+        var keyMap = {
+            'Escape': function() { // 回到标题界面
+                _self.game.setStage('titleStage');
+                _self.game.start();
+            }
+        }
+
+        this.baseControl = function(e) {
+            var code = e.code;
+            if (keyMap[code]) {
+                keyMap[code]();
+            }
+        }
+
+        document.addEventListener('keydown', _self.baseControl);
+    }
+
+    EditorStage.prototype._disableEditorControl = function() {
+        canvas.removeEventListener('mousedown', this.editorMouseDown);
+        canvas.removeEventListener('mouseup', this.editorMouseUp);
+    }
+
+    EditorStage.prototype._disableBaseControl = function() {
+        document.removeEventListener('keydown', this.baseControl);
+    }
+
+    EditorStage.prototype._drawCanvas = function() {
+        for (var i = 40 - 1; i >=0; i--) {
+            for (var j = 30 - 1; j >= 0; j--) {
+                var width = 20;
+                var height = 20;
+
+                this._strokeRect(i * width, j * height, width, height);
+            }
+        }
+    }
+
+    EditorStage.prototype._strokeRect = function(x, y, width, height) {
+        var ctx = this.ctx;
+
+        ctx.strokeStyle = '#B3B3B3';
+        ctx.strokeRect(x, y, width, height);
+    }
+
+    EditorStage.prototype.update = function() {
+        // 检查当前场景是否激活
+        if (!this.active) {
+            return;
+        }
+
+        this._clearCanvas();
+        this._drawCanvas();
+
+        var _self = this;
+        requestAnimationFrame(this.update.bind(_self));
+    }
+
+    /*
         方块
      */
     var Rect = function(width, height, x, y, config) {
@@ -881,14 +1020,17 @@
         }
         gameStage.setBrickData(brickData);
 
+        var editorStage = new EditorStage(canvas, ctx);
+
         // 将场景添加进游戏
         var stageMap = {
             gameStage: gameStage,
-            titleStage: titleStage
+            titleStage: titleStage,
+            editorStage: editorStage
         };
 
         gameDemo.addStage(stageMap);
-        gameDemo.setStage('gameStage');
+        gameDemo.setStage('titleStage');
         gameDemo.start();
     })();
 })();
