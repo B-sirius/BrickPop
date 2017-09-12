@@ -53,9 +53,9 @@
         return newobj;
     }
 
-    var throttle = function(fn) {
+    var throttle = function(fn, interval) {
         var timerId = null;
-        var interval = 100;
+        interval = interval || 100;
 
         return function() {
             if (timerId !== null) {
@@ -481,7 +481,7 @@
     GameStage.prototype._drawCanvas = function() {
         // 绘制图形
         var _self = this;
-        _self._drawRect(_self.bar);
+        this._drawRect(this.bar);
         this.brickList.forEach(function(item) {
             _self._drawRect(item);
         });
@@ -623,7 +623,9 @@
      */
     var EditorStage = function(canvas, ctx) {
         Stage.call(this, canvas, ctx);
-        this.selectedBrickList = [];
+        this.selectedBrickList = {};
+        this.brickCache = [];
+        this.currKey = null; // 当前选中的砖块的key
     }
 
     EditorStage.prototype = Object.create(Stage.prototype);
@@ -635,7 +637,20 @@
         this._addEventListener();
 
         this._clearCanvas();
+        this._drawLines();
+    }
+
+    EditorStage.prototype.update = function() {
+        // 检查当前场景是否激活
+        if (!this.active) {
+            return;
+        }
+
+        this._clearCanvas();
         this._drawCanvas();
+
+        var _self = this;
+        requestAnimationFrame(this.update.bind(_self));
     }
 
     EditorStage.prototype.stop = function() {
@@ -656,18 +671,14 @@
     EditorStage.prototype._enableEditorControl = function() {
         var _self = this;
         this.editorMouseDown = function(e) {
-            console.log(e.offsetX, e.offsetY);
-
+            _self._toggleBrick(e);
             _self.canvas.addEventListener('mousemove', throttleDrag);
         }
         this.editorMouseUp = function(e) {
             _self.canvas.removeEventListener('mousemove', throttleDrag);
         }
 
-        var drag = function(e) {
-            console.log(e.offsetX, e.offsetY);
-        }
-        var throttleDrag = throttle(drag.bind(this));
+        var throttleDrag = throttle(this._toggleBrick.bind(this), 20);
 
         this.canvas.addEventListener('mousedown', this.editorMouseDown);
         document.addEventListener('mouseup', this.editorMouseUp);
@@ -701,7 +712,7 @@
         document.removeEventListener('keydown', this.baseControl);
     }
 
-    EditorStage.prototype._drawCanvas = function() {
+    EditorStage.prototype._drawLines = function() {
         for (var i = 40 - 1; i >=0; i--) {
             for (var j = 30 - 1; j >= 0; j--) {
                 var width = 20;
@@ -719,17 +730,56 @@
         ctx.strokeRect(x, y, width, height);
     }
 
-    EditorStage.prototype.update = function() {
-        // 检查当前场景是否激活
-        if (!this.active) {
+    EditorStage.prototype._toggleBrick = function(e) {
+        var pos = this._getBrickPosition(e.offsetX, e.offsetY);
+
+        var key = pos.x + ' ' + pos.y;
+
+        if (this.currKey !== key) {
+            // 如果是已经选中的方块
+            this.currKey = key;
+            if (this.selectedBrickList[key]) {
+                this.brickCache.push(this.selectedBrickList[key])
+                delete this.selectedBrickList[key];
+            } else {
+                var mapBrick;
+                if (this.brickCache.length) {
+                    mapBrick = this.brickCache.pop();
+                    mapBrick.setPosition(pos.x, pos.y);
+                } else {
+                    mapBrick = new MapBrick(20, 20, pos.x, pos.y);
+                }
+                this.selectedBrickList[key] = mapBrick;
+            }
+        }
+    }
+
+    EditorStage.prototype._getBrickPosition = function(x, y) {
+        return {
+            x: Math.floor(x / 20) * 20,
+            y: Math.floor(y / 20) * 20 
+        }
+    }
+
+    EditorStage.prototype._drawCanvas = function() {
+        this._drawLines();
+
+        for (var key in this.selectedBrickList) {
+            var brick = this.selectedBrickList[key];
+            this._drawRect(brick);
+        }
+    }
+
+    EditorStage.prototype._drawRect = function(rect) {
+        var ctx = this.ctx;
+        // 是否填充图形
+        if (rect.fill === true) {
+            ctx.fillStyle = rect.color;
+            ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
             return;
         }
-
-        this._clearCanvas();
-        this._drawCanvas();
-
-        var _self = this;
-        requestAnimationFrame(this.update.bind(_self));
+        ctx.strokeStyle = rect.color;
+        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
     }
 
     /*
@@ -969,6 +1019,21 @@
     // 修改光亮
     Particle.prototype.updateColor = function() {
         this.color = 'rgba(' + this.rgb() + ',' + this.light / 60 + ')';
+    }
+
+    /*
+        地图编辑器砖块
+     */
+    var MapBrick = function(width, height, x, y, rectConfig) {
+        Rect.call(this, width, height, x, y, rectConfig);
+    }
+
+    MapBrick.prototype = Object.create(Rect.prototype);
+    MapBrick.prototype.constructor = MapBrick;
+
+    MapBrick.prototype.setPosition = function(x, y) {
+        this.x = x;
+        this.y = y;
     }
 
     /*
